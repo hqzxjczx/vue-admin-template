@@ -1,9 +1,8 @@
 <template>
   <div class="dashboard-container">
-    <div class="dashboard-text">name: {{ name }}</div>
-    <wrapper-hoc level="1">
-      fsfsdf
-    </wrapper-hoc>
+    <div class="dashboard-text">name: {{ name }} {{ names }}</div>
+    <wrapper-hoc level="2" />
+    <hoc-com />
     <!-- <anchored-heading level="2">
       anchored-heading
     </anchored-heading> -->
@@ -14,19 +13,33 @@
 import { mapGetters } from 'vuex';
 // import WrapperHoc from '@/components/wrapperHoc.js';
 import Vue from 'vue';
+import HocCom from './hoc.js';
 export default {
   name: 'Dashboard',
   components: {
-    wrapperHoc: Vue.extend({
-      functional: true,
+    wrapperHoc: {
+      // functional: true,
+      props: {
+        level: {
+          type: String,
+          default: ''
+        }
+      },
       render(h) {
-        return (
-          <div>
-            <slot></slot>
-          </div>
-        )
+        //   return h(
+        //     'div',
+        //     {
+        //       on: this.$listeners,
+        //       props: this.$props,
+        //       attrs: this.$attrs
+        //     },
+        //     ['fsfs', this.level]
+        //   )
+        //   // return 'div';
+        return <div>{this.level} fsf</div>
       }
-    })
+    },
+    HocCom: () => import('./hoc.js')
 
     // function(h) {
     //   console.log('wrapperHOcsss', h)
@@ -68,6 +81,11 @@ export default {
     //   //       </div>
     //   //   )
     // }
+  },
+  data() {
+    return {
+      names: 'dataname'
+    }
   },
   computed: {
     ...mapGetters(['name'])
