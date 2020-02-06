@@ -1,0 +1,16 @@
+{
+  "type": "commonjs",
+  "name": "i18n-script",
+  "version": "1.0.0",
+  "description": "transform vue code lang string",
+  "main": "scan.js",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "i18n",
+    "scan"
+  ],
+  "author": "kerry",
+  "license": "ISC"
+}

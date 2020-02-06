@@ -43,8 +43,9 @@
     "eslint-plugin-vue": "5.2.2",
     "hoc": "^1.1.0",
     "html-webpack-plugin": "3.2.0",
+    "jsx-parser": "^1.0.8",
     "mockjs": "1.0.1-beta3",
-    "node-sass": "^4.9.0",
+    "node-sass": "^4.13.1",
     "postcss-hexrgba": "^1.0.2",
     "postcss-nested": "^4.1.2",
     "postcss-pxtorem": "^4.0.1",
@@ -59,7 +60,8 @@
     "svg-sprite-loader": "4.1.3",
     "svgo": "1.2.2",
     "vue-hoc": "^0.4.7",
-    "vue-template-compiler": "2.6.10"
+    "vue-template-compiler": "2.6.10",
+    "xml2js": "^0.4.23"
   },
   "engines": {
     "node": ">=8.9",
