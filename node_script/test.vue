@@ -1,6 +1,4 @@
 
-
-
 <i18n>
   sfsf
 </i18n>
@@ -8,32 +6,41 @@
   <div>
     <div
       v-if="isTrue"
-      v-on:clicked="click('有道' + `百度${'欧陆'}谷歌`)"
+      v-on:clicked="click('有道'+ `百度${'欧陆'}谷歌` + `sfsff${'sfs'+ssf}sfsf`) | 'fsfs'"
       v-bind:bindprop="'放松放松'"
       v-bdManage="sf ? '十分士' : 'sfs十三点'"
       test="麦克思维"
-      @click="
-        click(`fsf大夫${'舒服舒服' ? '是否发生' : '舒服舒服'}十分士` + 'ooo')
-      "
+      @click="click(`来来来夫${'舒服舒服'? '是否发生' : '舒服舒服'}fff` + 'ooo')"
       v-bind="{ props: 'fsfs发士大夫' }"
-      :vars="`fs在fs${'无可无inner不可'}无可无不可` + 'sf在sf'"
-      tested="测试"
+      :vars="`fsass标杆
+      在fs${innervar+'确认'}无可
+      无不可` + 'sf在sf'+`fsfs发顺丰`"
+      tested="测?*+,试"
       :tS="sfs ? '沙发沙发' : 'sfsf'"
       :var="'发顺丰'"
     >
       外部
-
+      <!-- sfs放松放松放松ffs -->
+      桂标
+      <!-- sfsff-->
+      fsf沙发沙发
+      杆要
       {{ fun("内部") + func("内部2") + "平常" }}
-
+      sfsfs 标杆要
+      ssfsfsfsf标杆无可无不可fs
       <script>
       sfsf
       </script>
+      标杆sf
       舒服舒服放松放松 爽肤水
 
       {{
         "fsfssff" +
           "fsf堙" +
-          `fsoo舒服舒服f${"无可奈何" ? "多大" : "s孙菲菲"}桂sfs`
+          `sfsf标杆标杆标杆桂林
+          服舒
+          服f${"无可奈何" ? "多大" : 
+          "s孙菲菲"}桂sfs`
       }}
 
       标杆32323 fsfsfs
@@ -49,7 +56,8 @@
     <div v-show="'fsfs发顺丰' ? 'sf负少' : '沙发沙发'">
       sfsfssfs方式
       <div></div>
-      div《放松放松舒服舒 》
+      div《放松放松
+      舒服舒 》
 
       <i></i>
       <template>
@@ -58,7 +66,7 @@
         </div>
 
         <div>
-          <!-- {{ "放松放松发算法舒服舒服" }} -->
+          {{ "放松放松发算法舒服舒服" }}
           <span>
             fsfs发顺丰舒服舒服
           </span>

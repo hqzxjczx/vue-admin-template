@@ -221,14 +221,18 @@ function parseTemplateString(str, isExtracChineseStr) {
       isExtracChineseStr ? (isExistChineseStr(f) ? f.trim() : false) : f.trim()
     )
     .map(s => ({
-      value: [s],
+      value: s
+        .trim()
+        .split(/\r\n/)
+        .map(s => s.trim()),
+      // value: [s],
       type: "outerExpressionalInTemplateString",
       delimiter: null,
       str: s
     }));
 
-  var innerExpressionArr = str.match(/(?<=\${).+?(?=})/gs) || [];
-
+  var innerExpressionArr = str.match(/(?<=\${).*?(?=})/gs) || [];
+  // str.match(/(?<=\${)(`[^`]*`|"[^"]*"|'[^']*'|[^`'"}])*(?=})/gs) || [];
   if (innerExpressionArr.length) {
     innerExpressionArr = innerExpressionArr
       .filter(f =>
@@ -252,7 +256,7 @@ function extractExpressionStr(str, isExtracChineseStr) {
   if (isExtracChineseStr && !isExistChineseStr(str)) {
     return null;
   }
-  var reg = /(?<=(?<templateString>`))[^`]*(?=\1)|(?<=(?<singleQuotation>'))[^']*(?=\2)|(?<=(?<doubleQuotation>"))[^"]*(?=\3)/g;
+  var reg = /(?<=(?<templateString>`))[^`]*?(?=\1)|(?<=(?<singleQuotation>'))[^']*?(?=\2)|(?<=(?<doubleQuotation>"))[^"]*?(?=\3)/g;
   var execObj = null;
   var value = [];
   while ((execObj = reg.exec(str))) {
@@ -292,7 +296,7 @@ function extractMinStr({
   }
 
   if (isExpresstional) {
-    var reg = /\`[^\`]*\`|\'[^\']*\'|\"[^\"]*\"/g;
+    var reg = /`[^`]*?`|'[^']*?'|"[^"]*?"/g;
 
     var matchedvalue = str.match(reg);
     if (!matchedvalue) {
@@ -573,14 +577,15 @@ function extractJsxStr(str) {
 }
 
 function addSlash(str) {
-  return (
-    (str &&
-      str
-        .split("")
-        .reduce((a, c) => a.concat(["\\", c]), [])
-        .join("")) ||
-    str
-  );
+  // return (
+  //   (str &&
+  //     str
+  //       .split("")
+  //       .reduce((a, c) => a.concat(["\\", c]), [])
+  //       .join("")) ||
+  //   str
+  // );
+  return str.replace(/\W/g, "\\$&");
 }
 
 function getPlugRegFunByDelimiter({ delimiter, regExpOptions }) {
@@ -938,7 +943,10 @@ function extractStrsFromHtmlParseObj(obj, isExtractChinese) {
         })
         .map(s => {
           if (lodash.isString(s)) {
-            return s.trim();
+            return s
+              .split(/\r\n/)
+              .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+              .map(s => s.trim());
           }
           if (lodash.isObject(s)) {
             // return s["@binding"].trim();
@@ -953,11 +961,10 @@ function extractStrsFromHtmlParseObj(obj, isExtractChinese) {
         })
         .flat();
     case TEXT_STATIC_NODE:
-      var text = obj.text.trim();
-      if (!text) {
-        return [];
-      }
-      return isExtractChinese ? (isExistChineseStr(text) ? text : []) : text;
+      return obj.text
+        .split(/\r\n/)
+        .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+        .map(s => s.trim());
     default:
       break;
   }
@@ -1033,14 +1040,18 @@ function extractStrsFromJsxParseObj(obj, isExtractChinese) {
         })
       );
     case /^#text/g.test(obj.type):
-      var nodeValue = obj.nodeValue.trim();
-      return [
-        isExtractChinese
-          ? isExistChineseStr(nodeValue)
-            ? nodeValue
-            : false
-          : nodeValue
-      ];
+      var nodeValue = obj.nodeValue
+        .trim()
+        .split(/\r\n/)
+        .filter(f =>
+          isExtractChinese
+            ? isExistChineseStr(f)
+              ? f.trim()
+              : false
+            : f.trim()
+        )
+        .map(s => s.trim());
+      return nodeValue;
     default:
       break;
   }
@@ -1221,7 +1232,7 @@ async function setTranslateMap({
   ]);
   var { dir, fileNameList } = outPut;
   // console.log(dir, fileNameList);
-  // console.log(strArr);
+  console.log(strArr);
   // keyMap;
   // requestForTranslate(data[0]);
   return zhStrMap;
@@ -1262,33 +1273,300 @@ async function processLineByLine() {
 }
 
 // processLineByLine();
-function replaceStrOfTemplateFun(str, strAst) {
-  // strAst;
+
+function getReplaceExpVal({
+  mark,
+  varMark,
+  val,
+  translateMap,
+  translateMark,
+  isExtractChinese
+}) {
+  var matched = null;
+  var reg = /((?<tp>`)[^\`]*?`|(?<sg>')[^']*?'|(?<db>")[^"]*?")*/g;
+  var replaceVal = val;
+  while ((matched = reg.exec(val))) {
+    var groups = (matched && matched.groups) || {};
+    if (
+      !matched[0] ||
+      !isExtractChinese ||
+      (isExtractChinese && !isExistChineseStr(matched[0]))
+    ) {
+      if (!matched[0]) {
+        reg.lastIndex += 1;
+      }
+      continue;
+    }
+    switch (true) {
+      case !!groups.tp:
+        // `ssff${}sfsfsf` //
+        replaceVal = replaceVal.replace(matched[0], v => {
+          // return v;
+          var valStr = v.slice(1, -1); // 去除 ` `
+          var reg = /^.*?(?=\${)|\${[^}]*?}|(?<=})[^{}]*?(?=\${)|(?<=})[^}]*$/gs;
+          var matchArr = valStr.match(reg) || [];
+          var r = matchArr
+            .map(m => {
+              var commonMark = "`";
+              if (mark == "`") {
+                mark = varMark;
+              }
+              if (
+                !isExtractChinese ||
+                (isExtractChinese && !isExistChineseStr(m))
+              ) {
+                return `${commonMark}${m}${commonMark}`;
+              }
+              if (/\${[^}]*}/.test(m)) {
+                // :prop="'发顺丰'+`sfss随风${'舒服舒服'+"司法所发生"}司法所发生${`舒服舒服`}爽肤水`+'爽肤水'"
+                // 未考虑两层模板字符。vue是否允许两层模板字符的写法有待考虑
+                var valStr = m.slice(2, -1);
+                if (!valStr) {
+                  return `\${}`;
+                }
+                // return m;
+                return `\$\{${getReplaceExpVal({
+                  mark,
+                  varMark,
+                  val: valStr,
+                  translateMap,
+                  translateMark,
+                  isExtractChinese
+                })}\}`;
+              } else {
+                var mArr = m
+                  .split(/\r\n/)
+                  .filter(f => f.trim())
+                  .map(s => s.trim());
+                return mArr
+                  .map(mv => {
+                    if (translateMap.has(mv)) {
+                      return `${translateMark}(${varMark}${
+                        translateMap.get(mv).key
+                      }${varMark})`;
+                    } else {
+                      return `${commonMark}${mv}${commonMark}`;
+                    }
+                  })
+                  .reduce((a, c) => {
+                    return a ? `${a}+${c}` : c;
+                  }, "");
+              }
+            })
+            .reduce((a, c) => {
+              return a ? `${a}+${c}` : c;
+            }, "");
+          return r;
+          // if (/(?<=\${[^`}]*)`.*`(?=[^}]*})/.text(v)) {
+          //   console.log("please attention this situation"); // todo
+          // }
+        });
+        break;
+      case !!groups.sg:
+      case !!groups.db:
+        var valStr = matched[0].slice(1, -1); // 去除 ' ' | " "
+        if (translateMap.has(valStr)) {
+          replaceVal = replaceVal.replace(matched[0], v => {
+            // var valStr = v.slice(1,-1) // 去除 ' ' | " "
+            var m = groups.sg || sgroups.db;
+            return `${translateMark}(${m}${translateMap.get(valStr).key}${m})`;
+          });
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  return replaceVal;
+}
+
+function replaceExpVarValStr({
+  str,
+  k,
+  v,
+  translateMap,
+  translateMark,
+  isExtractChinese = true
+}) {
+  return str.replace(
+    new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`),
+    (...params) => {
+      var prop = params[1];
+      var mark = params[2];
+      var varMark = mark == '"' ? "'" : "'";
+      var val = params[3];
+      // val   此种情况未考虑 `${`sf's'ff`}`
+      // var valAst = extractMinStr({ str: v.trim(), isExtractChinese });
+      // log(valAst);
+      if (!isExtractChinese || (isExtractChinese && !isExistChineseStr(val))) {
+        return params[0];
+      } else {
+        // prop,mark,
+        // return params[0];
+        // str: params[0],
+
+        var convertStr = getReplaceExpVal({
+          mark,
+          varMark,
+          val,
+          translateMap,
+          translateMark,
+          isExtractChinese
+        });
+        // return params[0];
+        console.log(convertStr);
+        var r = `${prop}=${mark}${convertStr}${mark}`;
+        return r;
+      }
+    }
+  );
+}
+
+function replaceTpStrAttr({
+  str,
+  k,
+  v,
+  translateMap,
+  translateMark,
+  isExtractChinese = true
+}) {
+  if (/^v-|^@|^:|^\.|^#/.test(k)) {
+    if (v && v !== "{}") {
+      // v-for
+      str = replaceExpVarValStr({
+        str,
+        k,
+        v,
+        translateMap,
+        translateMark,
+        isExtractChinese
+      });
+    }
+  } else {
+    var reg = new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`);
+    str = str.replace(reg, (...params) => {
+      var prop = params[1];
+      var mark = params[2];
+      var val = params[3];
+      if (translateMap.has(val)) {
+        var key = translateMap.get(v).key;
+        var varMark = mark == '"' ? "'" : "'";
+        var varVal = `${translateMark}(${varMark}${key}${varMark})`;
+        var r = `:${prop}=${mark}${varVal}${mark}`;
+        return r;
+      } else {
+        return params[0];
+      }
+    });
+  }
+
+  return str;
+}
+
+function replaceTpStrByAst({
+  str,
+  strAst,
+  translateMap,
+  translateMark,
+  isExtractChinese
+}) {
+  // isExtractChinese 改为需要替换语言正则表达
+  if (isEmpty(strAst)) {
+    return str;
+  }
+  // (/^v-|^@|^:|^\.|^#/)
+
+  const TAG_NODE = 1;
+  const TEX_EXP_NODE = 2;
+  const TEXT_STATIC_NODE = 3;
+  // str, strAst, translateMap
+  // log(strAst);
+  // translateMap key zhStr enStr
+  switch (strAst.type) {
+    case TAG_NODE:
+      if (!isEmpty(strAst.attrsMap)) {
+        Object.entries(strAst.attrsMap).forEach(([k, v]) => {
+          if (isExtractChinese && isExistChineseStr(v)) {
+            str = replaceTpStrAttr({
+              str,
+              k,
+              v,
+              translateMap,
+              translateMark,
+              isExtractChinese
+            });
+          }
+        });
+      }
+      if (!isEmpty(strAst.children)) {
+        strAst.children.forEach(obj => {
+          str = replaceTpStrByAst({
+            str,
+            strAst: obj,
+            translateMap,
+            translateMark,
+            isExtractChinese
+          });
+        });
+      }
+    case TEX_EXP_NODE:
+    // obj.tokens
+    // obj.tokens.forEach(t=>{if(lodash.isString(t){})})
+    // getChineseStrBoolean
+    // str =
+    case TEXT_STATIC_NODE:
+      break;
+
+    default:
+      break;
+  }
+  return str;
+}
+
+function replaceStrOfTemplateFun(...params) {
+  if (!params[0].strAst) {
+    return str;
+  }
+  console.log("strAst");
+  log(params[0].strAst);
+  replaceTpStrByAst(...params);
   return "";
 }
 
-async function getReplaceStrOfTemplate(str, strAst) {
-  // (/^v-|^@|^:|^\.|^#/)
+async function getReplaceStrOfTemplate({
+  str,
+  strAst,
+  translateMap,
+  translateMark = "$t",
+  isExtractChinese = true
+}) {
   var matched = getRegExpWithTemplateTag().exec(str);
   if (!matched) {
     return null;
   }
   var tpStr = matched[0];
-  var value = replaceStrOfTemplateFun(tpStr, strAst);
+  var value = replaceStrOfTemplateFun({
+    str,
+    strAst,
+    translateMap,
+    translateMark,
+    isExtractChinese
+  });
   return {
     rpStr: tpStr,
     value
   };
 }
 
-function replaceStrOfScriptFun(str, strAst) {
+function replaceStrOfScriptFun({ str, strAst, translateMap }) {
   return "";
 }
 
-async function getReplaceStrOfScript(str, strAst, isVue) {
+async function getReplaceStrOfScript({ str, strAst, isVue, translateMap }) {
   var matched = getRegExpWithScriptTag().exec(str);
   var scriptStr = matched[0];
-  var value = replaceStrOfScriptFun(scriptStr, strAst);
+  var value = replaceStrOfScriptFun({ scriptStr, strAst, translateMap });
   return {
     rpStr: scriptStr,
     value
@@ -1312,8 +1590,19 @@ async function replaceFileStr({
 
   if (type == ".vue") {
     var strArr = await Promise.all([
-      getReplaceStrOfTemplate(str, o.template),
-      getReplaceStrOfScript(str, o.script, true)
+      getReplaceStrOfTemplate({
+        str,
+        strAst: o.template,
+        translateMap,
+        isExtractChinese
+      }),
+      getReplaceStrOfScript({
+        str,
+        strAst: o.script,
+        isVue: true,
+        isExtractChinese,
+        translateMap
+      })
     ]);
     strArr.forEach(rpObj => {
       if (rpObj) {
@@ -1322,7 +1611,13 @@ async function replaceFileStr({
     });
   }
   if (type == ".js") {
-    var rpObj = await getReplaceStrOfScript(str, o.script, true);
+    var rpObj = await getReplaceStrOfScript({
+      str,
+      strAst: o.script,
+      isVue: false,
+      isExtractChinese,
+      translateMap
+    });
     rpObj && (str = str.replace(rpObj.rpStr, rpObj.value));
   }
   // log(o);
@@ -1332,13 +1627,13 @@ async function replaceFileStr({
 async function autoI18n({ file, json, outPut, isExtractChinese = true }) {
   // await isExistChForFiles(file)
   // isExistChineseStr(str.replace(getExcludeCommentRegForVue(),''))
-
   var translateMap = await setTranslateMap({
     file,
     json,
     outPut,
     isExtractChinese
   });
+  // translateMap;
   // zhStrMap =
   var files = glob.sync(file.p, file.options);
   await Promise.all(
