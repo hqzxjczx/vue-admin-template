@@ -20,6 +20,7 @@
 // const require = createRequire(import.meta.url);
 
 const jsxParse = require("jsx-parser").default;
+const sha256 = require("crypto-js/sha256");
 
 const compiler = require("vue-template-compiler");
 const { promisify, inspect } = require("util");
@@ -1305,58 +1306,76 @@ function getReplaceExpVal({
           var valStr = v.slice(1, -1); // 去除 ` `
           var reg = /^.*?(?=\${)|\${[^}]*?}|(?<=})[^{}]*?(?=\${)|(?<=})[^}]*$/gs;
           var matchArr = valStr.match(reg) || [];
-          var r = matchArr
-            .map(m => {
-              var commonMark = "`";
-              if (mark == "`") {
-                mark = varMark;
-              }
-              if (
-                !isExtractChinese ||
-                (isExtractChinese && !isExistChineseStr(m))
-              ) {
-                return `${commonMark}${m}${commonMark}`;
-              }
-              if (/\${[^}]*}/.test(m)) {
-                // :prop="'发顺丰'+`sfss随风${'舒服舒服'+"司法所发生"}司法所发生${`舒服舒服`}爽肤水`+'爽肤水'"
-                // 未考虑两层模板字符。vue是否允许两层模板字符的写法有待考虑
-                var valStr = m.slice(2, -1);
-                if (!valStr) {
-                  return `\${}`;
+          if (!isEmpty(matchArr)) {
+            var r = matchArr
+              .map(m => {
+                var commonMark = "`";
+                if (mark == "`") {
+                  mark = varMark;
                 }
-                // return m;
-                return `\$\{${getReplaceExpVal({
-                  mark,
-                  varMark,
-                  val: valStr,
-                  translateMap,
-                  translateMark,
-                  isExtractChinese
-                })}\}`;
-              } else {
-                var mArr = m
-                  .split(/\r\n/)
-                  .filter(f => f.trim())
-                  .map(s => s.trim());
-                return mArr
-                  .map(mv => {
-                    if (translateMap.has(mv)) {
-                      return `${translateMark}(${varMark}${
-                        translateMap.get(mv).key
-                      }${varMark})`;
-                    } else {
-                      return `${commonMark}${mv}${commonMark}`;
-                    }
-                  })
-                  .reduce((a, c) => {
-                    return a ? `${a}+${c}` : c;
-                  }, "");
-              }
-            })
-            .reduce((a, c) => {
-              return a ? `${a}+${c}` : c;
-            }, "");
-          return r;
+                if (
+                  !isExtractChinese ||
+                  (isExtractChinese && !isExistChineseStr(m))
+                ) {
+                  if (m) {
+                    return `${commonMark}${m}${commonMark}`;
+                  } else {
+                    return "";
+                  }
+                }
+                if (/\${[^}]*}/.test(m)) {
+                  // :prop="'发顺丰'+`sfss随风${'舒服舒服'+"司法所发生"}司法所发生${`舒服舒服`}爽肤水`+'爽肤水'"
+                  // 未考虑两层模板字符。vue是否允许两层模板字符的写法有待考虑
+                  var valStr = m.slice(2, -1);
+                  if (!valStr) {
+                    return `\${}`;
+                  }
+                  // return m;
+                  return `\$\{${getReplaceExpVal({
+                    mark,
+                    varMark,
+                    val: valStr,
+                    translateMap,
+                    translateMark,
+                    isExtractChinese
+                  })}\}`;
+                } else {
+                  var mArr = m
+                    .split(/\r\n/)
+                    .filter(f => f.trim())
+                    .map(s => s.trim());
+                  return mArr
+                    .map(mv => {
+                      if (translateMap.has(mv)) {
+                        return `${translateMark}(${varMark}${
+                          translateMap.get(mv).key
+                        }${varMark})`;
+                      } else {
+                        return `${commonMark}${mv}${commonMark}`;
+                      }
+                    })
+                    .reduce((a, c) => {
+                      return a ? `${a}+${c}` : c;
+                    }, "");
+                }
+              })
+              .filter(f => f)
+              .reduce((a, c) => {
+                return a ? `${a}+${c}` : c;
+              }, "");
+
+            return r;
+          } else if (
+            isExtractChinese &&
+            isExistChineseStr(valStr) &&
+            translateMap.has(valStr)
+          ) {
+            return `${translateMark}(${varMark}${
+              translateMap.get(valStr).key
+            }${varMark})`;
+          }
+          return v;
+
           // if (/(?<=\${[^`}]*)`.*`(?=[^}]*})/.text(v)) {
           //   console.log("please attention this situation"); // todo
           // }
@@ -1368,7 +1387,7 @@ function getReplaceExpVal({
         if (translateMap.has(valStr)) {
           replaceVal = replaceVal.replace(matched[0], v => {
             // var valStr = v.slice(1,-1) // 去除 ' ' | " "
-            var m = groups.sg || sgroups.db;
+            var m = groups.sg || groups.db;
             return `${translateMark}(${m}${translateMap.get(valStr).key}${m})`;
           });
         }
@@ -1415,7 +1434,7 @@ function replaceExpVarValStr({
           isExtractChinese
         });
         // return params[0];
-        console.log(convertStr);
+        // console.log(convertStr);
         var r = `${prop}=${mark}${convertStr}${mark}`;
         return r;
       }
@@ -1463,13 +1482,43 @@ function replaceTpStrAttr({
 
   return str;
 }
-
+function replaceInnerTagText({
+  str,
+  text,
+  isExtractChinese,
+  translateMap,
+  translateMark,
+  delimiter,
+  quoteInDelimiter
+}) {
+  // if (lodash.isString(text) && isExtractChinese && isExistChineseStr(text)) {
+  text
+    .split(/\r\n/)
+    .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+    .map(s => s.trim())
+    .forEach(e => {
+      if (translateMap.has(e)) {
+        str = str.replace(e, v => {
+          return `${delimiter.start}${translateMark}(${quoteInDelimiter}${
+            translateMap.get(v).key
+          }${quoteInDelimiter})${delimiter.end}`;
+        });
+      }
+    });
+  // }
+  return str;
+}
 function replaceTpStrByAst({
   str,
   strAst,
   translateMap,
   translateMark,
-  isExtractChinese
+  isExtractChinese,
+  delimiter = {
+    start: "{{",
+    end: "}}"
+  },
+  quoteInDelimiter = "'"
 }) {
   // isExtractChinese 改为需要替换语言正则表达
   if (isEmpty(strAst)) {
@@ -1510,12 +1559,67 @@ function replaceTpStrByAst({
           });
         });
       }
+      break;
     case TEX_EXP_NODE:
-    // obj.tokens
-    // obj.tokens.forEach(t=>{if(lodash.isString(t){})})
-    // getChineseStrBoolean
-    // str =
+      if (!isEmpty(strAst.tokens)) {
+        strAst.tokens.forEach(text => {
+          if (
+            lodash.isString(text) &&
+            isExtractChinese &&
+            isExistChineseStr(text)
+          ) {
+            str = replaceInnerTagText({
+              str,
+              text,
+              isExtractChinese,
+              translateMap,
+              translateMark,
+              delimiter,
+              quoteInDelimiter
+            });
+          }
+          if (
+            lodash.isObject(text) &&
+            isExtractChinese &&
+            isExistChineseStr(text["@binding"])
+          ) {
+            // text["@binding"]
+            //   .trim()
+            //   .splite(/\r\n/)
+            //   .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+            //   .match(m => m.trim())
+            //   .forEach(t => {
+            //   });
+
+            str = str.replace(text["@binding"], t => {
+              var r = getReplaceExpVal({
+                mark: '"',
+                varMark: "'",
+                val: t,
+                translateMap,
+                translateMark,
+                isExtractChinese
+              });
+              return t;
+            });
+          }
+        });
+      }
+
+      break;
     case TEXT_STATIC_NODE:
+      var text = strAst.text;
+      if (isExtractChinese && isExistChineseStr(text)) {
+        str = replaceInnerTagText({
+          str,
+          text,
+          isExtractChinese,
+          translateMap,
+          translateMark,
+          delimiter,
+          quoteInDelimiter
+        });
+      }
       break;
 
     default:
@@ -1524,14 +1628,39 @@ function replaceTpStrByAst({
   return str;
 }
 
-function replaceStrOfTemplateFun(...params) {
-  if (!params[0].strAst) {
+function replaceStrOfTemplateFun({ str, strAst, ...params }) {
+  if (!strAst) {
     return str;
   }
-  console.log("strAst");
-  log(params[0].strAst);
-  replaceTpStrByAst(...params);
-  return "";
+
+  // 替换注释掉的内容存起来
+  var commentConentMap = new Map();
+  var reg = /<!--.*?-->/gs;
+  // log(sha256);
+  var strWithouComment = str.replace(reg, v => {
+    var key = sha256(v)
+      .toString()
+      .slice(0, 64);
+    if (commentConentMap.has(key)) {
+      key = sha256(v + Date.now())
+        .toString()
+        .slice(0, 64);
+    }
+    commentConentMap.set(key, v);
+    return key;
+  });
+
+  if (params.isExtractChinese && !isExistChineseStr(strWithouComment)) {
+    return str;
+  }
+
+  var r = replaceTpStrByAst({ str: strWithouComment, strAst, ...params });
+
+  Array.from(commentConentMap.entries()).forEach(([k, v]) => {
+    r = r.replace(k, k => commentConentMap.get(k));
+  });
+  // r;
+  return r;
 }
 
 async function getReplaceStrOfTemplate({
@@ -1541,35 +1670,286 @@ async function getReplaceStrOfTemplate({
   translateMark = "$t",
   isExtractChinese = true
 }) {
+  if (!isExtractChinese) {
+    return null;
+  }
   var matched = getRegExpWithTemplateTag().exec(str);
   if (!matched) {
     return null;
   }
   var tpStr = matched[0];
   var value = replaceStrOfTemplateFun({
-    str,
+    str: tpStr,
     strAst,
     translateMap,
     translateMark,
     isExtractChinese
   });
+  // console.log(value);
   return {
-    rpStr: tpStr,
+    source: tpStr,
     value
   };
 }
 
-function replaceStrOfScriptFun({ str, strAst, translateMap }) {
-  return "";
+function setLangStrForScriptStrWithoutJsxAndComment({
+  str,
+  strAstArr,
+  translateMap,
+  isExtractChinese
+}) {
+  var flatArr = strAstArr.flat(Infinity);
+  if (isEmpty(flatArr)) {
+    return str;
+  }
+  // 忽略props中的中文字符串，正确做法是单独提取props的中文字符串，做特定的操作，比如引入i18n,为props中存在中文字符串，调用i18n函数
+  var expValStr = flatArr.map(o => {
+    return o.str;
+  });
+
+  var replaceStr = expValStr.reduce((a, c) => {
+    if (c && lodash.isString(c)) {
+      var varMark = c.slice(0, 1);
+      var mark = varMark === '"' ? '"' : "'";
+      var rpVal = getReplaceExpVal({
+        mark,
+        varMark,
+        val: c,
+        translateMap,
+        translateMark: "this.$t",
+        isExtractChinese
+      });
+      a = a.replace(c, rpVal);
+      return a;
+    } else {
+      return a;
+    }
+  }, str);
+
+  /* todo reduce 调用异步函数
+  var replaceStr = flatArr.reduce(async (a, c) => {
+     log(c);
+     log(a);
+  }, str); */
+
+  return replaceStr;
 }
 
-async function getReplaceStrOfScript({ str, strAst, isVue, translateMap }) {
-  var matched = getRegExpWithScriptTag().exec(str);
-  var scriptStr = matched[0];
-  var value = replaceStrOfScriptFun({ scriptStr, strAst, translateMap });
+async function replaceStrOfScriptFun({
+  str,
+  jsxStrArr,
+  strAstArr,
+  translateMap,
+  isVue,
+  isExtractChinese
+}) {
+  /*  已经去除注释 // \/\* \*\/ \{\/\* \*\/\} */
+  if (!isExtractChinese) {
+    return str;
+  }
+  var replacedStr = str;
+
+  if (!isEmpty(jsxStrArr)) {
+    var jsxMap = new Map();
+    var strWithoutJsx = replacedStr;
+    jsxStrArr.forEach(v => {
+      var k = sha256(v)
+        .toString()
+        .slice(0, 64);
+      if (jsxMap.has(k)) {
+        k = sha256(v + Date.now())
+          .toString()
+          .slice(0, 6);
+      }
+      jsxMap.set(k, v);
+      strWithoutJsx = strWithoutJsx.replace(v, k);
+    });
+    if (!isExistChineseStr(strWithoutJsx)) {
+      return str;
+    }
+    strWithoutJsx = setLangStrForScriptStrWithoutJsxAndComment({
+      str: strWithoutJsx,
+      strAstArr,
+      translateMap,
+      isExtractChinese
+    });
+    Array.from(jsxMap.entries()).forEach(([k, v]) => {
+      strWithoutJsx = strWithoutJsx.replace(k, v);
+    });
+    replacedStr = strWithoutJsx;
+  } else {
+    if (!isExistChineseStr(str)) {
+      return str;
+    }
+    replacedStr = setLangStrForScriptStrWithoutJsxAndComment({
+      str: replacedStr,
+      strAstArr,
+      translateMap,
+      isExtractChinese
+    });
+  }
+  return replacedStr;
+}
+
+function replaceJsxStrByAst({ str, ast, translateMap, isExtractChinese }) {
+  // log(ast);
+  var type = ast.type;
+
+  // #text #jsx
+  // var TAG_NODE =
+
+  // getReplaceExpVal(
+  //   ({ mark, varMark, val, translateMap, translateMark, isExtractChinese }: {
+  //     mark: any,
+  //     varMark: any,
+  //     val: any,
+  //     translateMap: any,
+  //     translateMark: any,
+  //     isExtractChinese: any
+  //   })
+  // );
+  switch (true) {
+    case /^\w/.test(type):
+      log(ast);
+
+      break;
+    case /^#jsx/.test(type):
+      break;
+    case /^#text/.test(type):
+      break;
+
+    default:
+      break;
+  }
+  return str;
+}
+
+async function replaceStrOfJsxFun({
+  strArr,
+  strAstArr,
+  isExtractChinese,
+  translateMap
+  // exCludeComment = true
+}) {
+  if (
+    isEmpty(strArr) ||
+    !isExtractChinese ||
+    (isExtractChinese && strArr.every(e => !isExistChineseStr(e)))
+  ) {
+    return null;
+  }
+  // log(strAstArr);
+  return strArr.map((str, index) => {
+    if (isExtractChinese && isExistChineseStr(str)) {
+      return replaceJsxStrByAst({
+        str,
+        ast: strAstArr[index],
+        translateMap,
+        isExtractChinese
+      });
+    } else {
+      return str;
+    }
+  }); // {sourceStr, str}
+}
+
+function getJsxStrArrByReg({ str, isVue }) {
+  var withoutScriptTagStr = str;
+  if (isVue) {
+    var withoutScriptTag = /(?<=\s*<(script)('[^']*'|"[^"]*"|[^'">])*>)[\s\S]*(?=\s*<\/\1>)/g.exec(
+      str
+    );
+    var withoutScriptTagStr = (withoutScriptTag && withoutScriptTag[0]) || "";
+  }
+  var jsxReg = getScriptJsxReg();
+  jsxStrArr = withoutScriptTagStr.match(jsxReg) || [];
+  return jsxStrArr;
+}
+
+async function getReplaceStrOfScript({
+  str,
+  strAst,
+  isVue,
+  translateMap,
+  isExtractChinese
+}) {
+  if (!isExtractChinese) {
+    return null;
+  }
+  var scriptStr = str;
+  if (isVue) {
+    var matched = getRegExpWithScriptTag().exec(str);
+    if (!matched) {
+      return null;
+    }
+    // 是否要去除 <script>
+    // function fun(){in '中文'}
+    //export default {
+    //
+    // }的内容，得证明
+    // </script>
+    // sha256
+    // scriptStr;
+    // var outOfExport;
+
+    scriptStr = matched[0];
+  }
+
+  var commentConentMap = new Map();
+  var reg = /\/\/[^\r\n]*|{\/\*[^]*?\*\/}|\/\*[^]*?\*\//g;
+  // var reg = /\/\/[^\r\n]*|\/\*[^]*?\*\//g;
+  var strWithoutComment = scriptStr.replace(reg, v => {
+    var k = sha256(v)
+      .toString()
+      .slice(0, 64);
+    if (commentConentMap.has(k)) {
+      k = sha256(v + Date.now())
+        .toString()
+        .slice(0, 64);
+    }
+    commentConentMap.set(k, v);
+    return k;
+  });
+
+  if (isExtractChinese && !isExistChineseStr(strWithoutComment)) {
+    return null;
+  }
+
+  // log(strAst);
+
+  var jsxStrArr = [];
+
+  if (!isEmpty(strAst.jsxStr) && !isEmpty(strAst.jsxStr.value)) {
+    jsxStrArr = getJsxStrArrByReg({ str: strWithoutComment, isVue });
+  }
+
+  var [pureScriptStr, jsxStrRpArr] = await Promise.all([
+    replaceStrOfScriptFun({
+      str: strWithoutComment,
+      jsxStrArr,
+      strAstArr: (strAst.varStr && strAst.varStr.value) || [],
+      translateMap,
+      isVue,
+      isExtractChinese
+    }),
+    replaceStrOfJsxFun({
+      strArr: jsxStrArr,
+      strAstArr: (strAst.jsxStr && strAst.jsxStr.value) || [],
+      translateMap,
+      isExtractChinese
+    })
+  ]);
+  var strWithoutCommentI18n = jsxStrRpArr.reduce(
+    (a, c) => a.replace(c.source, c.value),
+    pureScriptStr
+  );
+  var replaceStr = Array.from(commentConentMap.entries()).reduce(
+    (a, [k, v]) => a.replace(k, v),
+    strWithoutCommentI18n
+  );
   return {
-    rpStr: scriptStr,
-    value
+    source: scriptStr,
+    value: replaceStr
   };
 }
 
@@ -1604,11 +1984,15 @@ async function replaceFileStr({
         translateMap
       })
     ]);
-    strArr.forEach(rpObj => {
-      if (rpObj) {
-        str = str.replace(rpObj.rpStr, rpObj.value);
-      }
-    });
+    str = strArr.reduce(
+      (a, c) => (c && a.replace(c.source, c.value)) || a,
+      str
+    );
+    // strArr.forEach(rpObj => {
+    //   if (rpObj) {
+    //     str = str.replace(rpObj.source, rpObj.value);
+    //   }
+    // });
   }
   if (type == ".js") {
     var rpObj = await getReplaceStrOfScript({
@@ -1618,7 +2002,7 @@ async function replaceFileStr({
       isExtractChinese,
       translateMap
     });
-    rpObj && (str = str.replace(rpObj.rpStr, rpObj.value));
+    rpObj && (str = str.replace(rpObj.source, rpObj.value));
   }
   // log(o);
   return str;

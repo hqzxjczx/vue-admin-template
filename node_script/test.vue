@@ -20,7 +20,8 @@
       :var="'发顺丰'"
     >
       外部
-      <!-- sfs放松放松放松ffs -->
+      <!-- sfs放松放
+      松放松ffs -->
       桂标
       <!-- sfsff-->
       fsf沙发沙发
@@ -125,7 +126,7 @@ export default {
       //     </div>*/}
       //   </div>);
       var msg = (
-        <div>
+        <div prop="顺丰发" var={this.va ? '确认': `是否`}>
           fsfs无可无不可
           <span v-show={sfsf ? '是否是否是': 's沙发沙发'} prop="xx" tg={this.tgs} bb={ prop: "s发bb顺丰" }>十分士</span>
           <div p={ { ...div } } pp="沙发沙发">

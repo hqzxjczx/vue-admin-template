@@ -39,6 +39,7 @@
     "babel-jest": "^24.9.0",
     "chalk": "2.4.2",
     "connect": "3.6.6",
+    "crypto-js": "^3.2.1",
     "eslint": "5.15.3",
     "eslint-plugin-vue": "5.2.2",
     "hoc": "^1.1.0",
