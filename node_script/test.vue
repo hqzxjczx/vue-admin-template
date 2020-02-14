@@ -15,7 +15,7 @@
       :vars="`fsass标杆
       在fs${innervar+'确认'}无可
       无不可` + 'sf在sf'+`fsfs发顺丰`"
-      tested="测?*+,试"
+      tested="确dada认"
       :tS="sfs ? '沙发沙发' : 'sfsf'"
       :var="'发顺丰'"
     >
@@ -67,7 +67,7 @@
         </div>
 
         <div>
-          {{ "放松放松发算法舒服舒服" }}
+          {{ `放松放松发算法舒服舒服` }}
           <span>
             fsfs发顺丰舒服舒服
           </span>
@@ -95,10 +95,12 @@ export default {
       return v;
     },
     func(c) {
-      var m = '发送方发送' ? `fs沙发沙发f` : 'sfsf'
+      var m = '发送方发送' ? `确认` : 'sfsf'
       var msf = (
-        <div>
-          f <div>f随风倒十分
+        <div staticProp="确认"> 
+        确认
+          f 
+        确认<div>f随风倒十分
           {/*
           发顺丰顺丰
           */}
@@ -109,7 +111,7 @@ export default {
       // var td = <test />;
       // var single = <div prop="f的说法是sfs" prop={prop: "sfsf是"}> 发算法{"发顺jsx in plug丰"}舒服舒服</div>; // delimiter 紧跟 delimiter 会解析出重复的内容， 此处便是 {["[^"]*"|'[^']*'|`[^`]*`]}
       var single = (
-        <div prop=" f的说法是sfs"> 发算法{"发顺jsx in plug丰"}舒服舒服</div>
+        <div> 确认{"发顺jsx in plug丰"}舒服舒服</div>
       );
       // var dsfs = <compon prop="fsfs 是否" />;
       return c;
@@ -128,15 +130,15 @@ export default {
       var msg = (
         <div prop="顺丰发" var={this.va ? '确认': `是否`}>
           fsfs无可无不可
-          <span v-show={sfsf ? '是否是否是': 's沙发沙发'} prop="xx" tg={this.tgs} bb={ prop: "s发bb顺丰" }>十分士</span>
-          <div p={ { ...div } } pp="沙发沙发">
+          <span v-show={sfsf ? '是否是否是': 's沙发沙发'} prop="xx" tg={this.tgs} bb={ {prop: "s发bb顺丰"} }>十分士</span>
+          <div p={ { ...div } }>
             filters
             {`outerExp发顺丰inexp${"舒服inExp舒服" +
               "是inExp否"}分手分手费outerExp舒服舒服`}
-            fsfsf
+            确认
           </div>
           <div>fsfsf无可无不可地</div>
-          <Tgsf onClick={click('fsfs'?:'沙发沙发':'是否是否是')}></Tgsf>
+          <Tgsf onClick={click('fsfs'?:'确认':'是否是否是')}></Tgsf>
         </div>
       );
       // return "放松放松";

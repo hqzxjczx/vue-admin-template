@@ -1213,14 +1213,119 @@ async function isExistChForFiles({ p, options }) {
   return result.filter(f => f);
 }
 
+function getUnicKey({ str, keyMap }) {
+  if (!keyMap.has(str)) {
+    return str;
+  } else {
+    var rpStr = str;
+    while (keyMap.has(rpStr)) {
+      rpStr = str + parseInt(Math.random() * 1000000);
+    }
+    return rpStr;
+  }
+}
 // console.log(isExistChForFiles({ p: resolve(__dirname, "./test.vue") }));
+function getKeyByStr({ str, keyMap, count = 4, len = 2 }) {
+  var wordsStr = str.trim();
+  var wordsStrArr = wordsStr.split(/\s*/g);
+  var wordCount = wordsStrArr.length;
+  var r = wordsStr;
+  switch (true) {
+    case wordCount.lenth < count:
+      return getUnicKey({ str, keyMap });
+    case wordCount.lenth >= count:
+      r = wordsStrArr.map(s => s.slice(0, len)).join("");
+      return getUnicKey({ str, keyMap });
+    default:
+      return getUnicKey({ str, keyMap });
+      break;
+  }
+}
+
+function setKeyForWordString({ enStr, zhStr, keyMap, zhStrMap }) {
+  if (!enStr.trim()) {
+    return;
+  }
+  var k = getKeyByStr({ str: enStr, keyMap });
+  keyMap.set(k, k);
+  zhStrMap.set(zhStr, {
+    key: k,
+    zhStr,
+    enStr
+  });
+}
+
+async function requestForTranslateByStr({ str }) {
+  return Promise.resolve({ str } || null);
+}
+
+async function translateWords({
+  strArr,
+  zhStrMap,
+  keyMap,
+  delimiter = { start: "{{", end: "}}" },
+  isUpper = true
+}) {
+  var strArrWithDelimiter = strArr.map(
+    s => `${delimiter.start}${s}${delimiter.end}`
+  );
+  var strsWithDelimiter = strArrWithDelimiter.join("");
+  console.log(strsWithDelimiter);
+  var result = await requestForTranslateByStr({ str: strsWithDelimiter });
+  if (result && result.str) {
+    var translatedStrArr = result.str.match(/(?<={{).*?(?=}})/g);
+    translatedStrArr.forEach((s, index) => {
+      var enStr = s.replace(/(?<=\s*)\w/, s => s.toUpperCase());
+      var zhStr = strArr[index];
+      setKeyForWordString({ enStr, zhStr, keyMap, zhStrMap });
+    });
+  }
+  console.log(zhStrMap);
+  return zhStrMap;
+}
+
+function outStringToJson({ dir, fileNameList, map }) {
+  var zhJson = {};
+  var enJson = {};
+  Array.from(map.values()).forEach(o => {
+    zhJson[o.key] = o.zhStr;
+    enJson[o.key] = o.enStr;
+  });
+  var zhFileName = "i18n_common_zh.json";
+  var enFileName = "i18n_common_eh.json";
+  if (Array.isArray(fileNameList) && fileNameList.length) {
+    fileNameList.forEach(f => {
+      if (f.includes("zh")) {
+        zhFileName = f;
+        console.log();
+        writeFile(path.resolve(dir, zhFileName), JSON.stringify(zhJson)).then(
+          res => {
+            console.log(res);
+          }
+        ).catch(e){
+          console.log(e)
+        };
+      }
+      if (/en/g.test(f)) {
+        enFileName = f;
+        writeFile(path.resolve(dir, enFileName), JSON.stringify(enJson)).then(
+          res => {
+            console.log(res);
+          }
+        ).catch(e){
+          console.log(e)
+        };
+      }
+    });
+  }
+}
 
 async function setTranslateMap({
   file,
   json,
   outPut = {
     dir: resolve(__dirname, "./"),
-    fileNameList: ["common_zn.json", "common_en.json"]
+    fileNameList: ["i18n_common_zh.json", "i18n_common_en.json"]
   },
   isExtractChinese = true
 }) {
@@ -1231,11 +1336,19 @@ async function setTranslateMap({
     extractStrOfFiles({ ...file, isExtractChinese }),
     readExistJsonFile(json)
   ]);
+  if (!isEmpty(strArr)) {
+    // strArr 待翻译的中文字符串数组
+    // zhStrMap 已有翻译的对应的中文
+    // console.log(dir, fileNameList);
+    var filterArr = strArr.filter(s => zhStrMap.has(s));
+    var totalZhStrMap = await translateWords({
+      strArr: filterArr,
+      zhStrMap,
+      keyMap
+    });
+  }
   var { dir, fileNameList } = outPut;
-  // console.log(dir, fileNameList);
-  console.log(strArr);
-  // keyMap;
-  // requestForTranslate(data[0]);
+  outStringToJson({ dir, fileNameList, map: zhStrMap });
   return zhStrMap;
 }
 
@@ -1286,6 +1399,7 @@ function getReplaceExpVal({
   var matched = null;
   var reg = /((?<tp>`)[^\`]*?`|(?<sg>')[^']*?'|(?<db>")[^"]*?")*/g;
   var replaceVal = val;
+
   while ((matched = reg.exec(val))) {
     var groups = (matched && matched.groups) || {};
     if (
@@ -1397,24 +1511,47 @@ function getReplaceExpVal({
     }
   }
 
+  // if (typeof val == "string" && val.includes("放松放松发算法舒服舒服")) {
+  //   console.log(val, replaceVal);
+  // }
   return replaceVal;
 }
 
-function replaceExpVarValStr({
+// function getEqualValReg({k,v}){
+//   return new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`)
+// }
+
+function replaceBindedPropStr({
   str,
   k,
   v,
   translateMap,
   translateMark,
-  isExtractChinese = true
+  getEqualValReg,
+  isExtractChinese = true,
+  isJsx = false
 }) {
+  getEqualValReg =
+    getEqualValReg ||
+    function({ k, v, isJsx }) {
+      if (isJsx) {
+        return new RegExp(`\(${addSlash(k)}\)\=\(\{\)\(${addSlash(v)}\)\(\}\)`);
+      } else {
+        return new RegExp(
+          `\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`
+        );
+      }
+    };
   return str.replace(
-    new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`),
+    // new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`),
+    getEqualValReg({ k, v, isJsx }),
     (...params) => {
       var prop = params[1];
-      var mark = params[2];
-      var varMark = mark == '"' ? "'" : "'";
+      var markStart = params[2];
+      var varMark = isJsx ? '"' : markStart === '"' ? "'" : "'";
       var val = params[3];
+      var markEnd = isJsx ? params[4] : markStart; //'}'
+      var mark = isJsx ? (varMark == '"' ? "'" : '"') : markStart;
       // val   此种情况未考虑 `${`sf's'ff`}`
       // var valAst = extractMinStr({ str: v.trim(), isExtractChinese });
       // log(valAst);
@@ -1435,51 +1572,148 @@ function replaceExpVarValStr({
         });
         // return params[0];
         // console.log(convertStr);
-        var r = `${prop}=${mark}${convertStr}${mark}`;
+        var r = `${prop}=${markStart}${convertStr}${markEnd}`;
         return r;
       }
     }
   );
 }
 
-function replaceTpStrAttr({
+// function bindingFun({ str, k, v, mark, varMark, translateMap, translateMark }) {
+//   if (translateMap.has(v)) {
+//     var key = translateMap.get(v).key;
+//     var varVal = `${translateMark}(${varMark}${key}${varMark})`;
+//     return `:${k}=${mark}${varVal}${mark}}`;
+//   } else {
+//     return str;
+//   }
+// }
+
+function replaceSaticeAttr({
   str,
   k,
   v,
   translateMap,
   translateMark,
-  isExtractChinese = true
+  isExtractChinese,
+  isJsx,
+  getEqualValReg,
+  bindingFun = ({
+    str,
+    isJsx,
+    k,
+    v,
+    mark,
+    markStart,
+    markEnd,
+    varMark,
+    translateMap,
+    translateMark
+  }) => {
+    if (translateMap.has(v)) {
+      var key = translateMap.get(v).key;
+      if (isJsx) {
+        var varVal = `${translateMark}(${varMark}${key}${varMark})`;
+        return `${k}=${markStart}${varVal}${markEnd}`;
+      } else {
+        var varVal = `${translateMark}(${varMark}${key}${varMark})`;
+
+        return `:${k}=${markStart}${varVal}${markEnd}}`;
+      }
+    } else {
+      return str;
+    }
+  }
 }) {
-  if (/^v-|^@|^:|^\.|^#/.test(k)) {
+  if (isExtractChinese && !isExistChineseStr(v)) {
+    return str;
+  }
+
+  getEqualValReg =
+    getEqualValReg ||
+    function({ k, v, isJsx }) {
+      // if (isJsx) {
+      //   return new RegExp(`\(${addSlash(k)}\)\=\(\{\)\(${addSlash(v)}\)\(\}\)`);
+      // } else {
+      return new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`);
+      // }
+    };
+  var reg = new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`);
+  str = str.replace(getEqualValReg({ k, v, isJsx }), (...params) => {
+    // var prop = params[1];
+    // var mark = params[2];
+    // var val = params[3];
+    // var varMark = mark == '"' ? "'" : "'";
+    // var markStart
+
+    var prop = params[1];
+    var markStart = isJsx ? "{" : params[2];
+    var varMark = isJsx ? '"' : markStart === '"' ? "'" : "'";
+    var val = params[3];
+    var markEnd = isJsx ? "}" : markStart; //'}'
+    var mark = isJsx ? (varMark == '"' ? "'" : '"') : markStart;
+    var r = bindingFun({
+      str: params[0],
+      k: prop,
+      v: val,
+      isJsx,
+      mark,
+      markStart,
+      markEnd,
+      varMark,
+      translateMap,
+      translateMark
+    });
+    return r;
+  });
+
+  return str;
+}
+
+function replaceTpStrAttr({
+  str,
+  k,
+  v,
+  equalVal,
+  translateMap,
+  translateMark,
+  isExtractChinese = true,
+  isJsx,
+  isBindedVarFun = ({ k, v, str, isJsx, equalVal }) => {
+    if (isJsx) {
+      return /^[^=]+={[^}]*}$/.test(equalVal);
+    } else {
+      return /^v-|^@|^:|^\.|^\#/.test(k);
+    }
+  },
+  bindingFun
+}) {
+  // todo 是否排除 :class ="{{}}" :style="{{}}"
+  if (isBindedVarFun({ k, v, str, isJsx, equalVal })) {
     if (v && v !== "{}") {
       // v-for
-      str = replaceExpVarValStr({
+      str = replaceBindedPropStr({
         str,
         k,
         v,
         translateMap,
         translateMark,
-        isExtractChinese
+        isExtractChinese,
+        isJsx
       });
     }
   } else {
-    var reg = new RegExp(`\(${addSlash(k)}\)\=\(\'\|\"\)\(${addSlash(v)}\)\\2`);
-    str = str.replace(reg, (...params) => {
-      var prop = params[1];
-      var mark = params[2];
-      var val = params[3];
-      if (translateMap.has(val)) {
-        var key = translateMap.get(v).key;
-        var varMark = mark == '"' ? "'" : "'";
-        var varVal = `${translateMark}(${varMark}${key}${varMark})`;
-        var r = `:${prop}=${mark}${varVal}${mark}`;
-        return r;
-      } else {
-        return params[0];
-      }
+    str = replaceSaticeAttr({
+      str,
+      k,
+      v,
+      translateMap,
+      translateMark,
+      isExtractChinese,
+      isJsx,
+      bindingFun
     });
   }
-
   return str;
 }
 function replaceInnerTagText({
@@ -1532,44 +1766,47 @@ function replaceTpStrByAst({
   // str, strAst, translateMap
   // log(strAst);
   // translateMap key zhStr enStr
+  var replaceStr = str;
   switch (strAst.type) {
     case TAG_NODE:
       if (!isEmpty(strAst.attrsMap)) {
-        Object.entries(strAst.attrsMap).forEach(([k, v]) => {
-          if (isExtractChinese && isExistChineseStr(v)) {
-            str = replaceTpStrAttr({
-              str,
+        replaceStr = Object.entries(strAst.attrsMap)
+          .filter(([k, v]) =>
+            getChineseStrBoolean({ str: v, isExtractChinese })
+          )
+          .reduce((a, [k, v]) => {
+            return replaceTpStrAttr({
+              str: a,
               k,
               v,
               translateMap,
               translateMark,
               isExtractChinese
             });
-          }
-        });
+          }, replaceStr);
       }
       if (!isEmpty(strAst.children)) {
-        strAst.children.forEach(obj => {
-          str = replaceTpStrByAst({
-            str,
-            strAst: obj,
+        replaceStr = strAst.children.reduce((a, c) => {
+          return replaceTpStrByAst({
+            str: a,
+            strAst: c,
             translateMap,
             translateMark,
             isExtractChinese
           });
-        });
+        }, replaceStr);
       }
       break;
     case TEX_EXP_NODE:
       if (!isEmpty(strAst.tokens)) {
-        strAst.tokens.forEach(text => {
+        replaceStr = strAst.tokens.reduce((a, text) => {
           if (
             lodash.isString(text) &&
             isExtractChinese &&
             isExistChineseStr(text)
           ) {
-            str = replaceInnerTagText({
-              str,
+            return replaceInnerTagText({
+              str: a,
               text,
               isExtractChinese,
               translateMap,
@@ -1583,15 +1820,7 @@ function replaceTpStrByAst({
             isExtractChinese &&
             isExistChineseStr(text["@binding"])
           ) {
-            // text["@binding"]
-            //   .trim()
-            //   .splite(/\r\n/)
-            //   .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
-            //   .match(m => m.trim())
-            //   .forEach(t => {
-            //   });
-
-            str = str.replace(text["@binding"], t => {
+            return a.replace(text["@binding"], t => {
               var r = getReplaceExpVal({
                 mark: '"',
                 varMark: "'",
@@ -1600,18 +1829,19 @@ function replaceTpStrByAst({
                 translateMark,
                 isExtractChinese
               });
-              return t;
+              return r;
             });
           }
-        });
+          return a;
+        }, replaceStr);
       }
 
       break;
     case TEXT_STATIC_NODE:
       var text = strAst.text;
       if (isExtractChinese && isExistChineseStr(text)) {
-        str = replaceInnerTagText({
-          str,
+        replaceStr = replaceInnerTagText({
+          str: replaceStr,
           text,
           isExtractChinese,
           translateMap,
@@ -1625,7 +1855,8 @@ function replaceTpStrByAst({
     default:
       break;
   }
-  return str;
+
+  return replaceStr;
 }
 
 function replaceStrOfTemplateFun({ str, strAst, ...params }) {
@@ -1653,13 +1884,13 @@ function replaceStrOfTemplateFun({ str, strAst, ...params }) {
   if (params.isExtractChinese && !isExistChineseStr(strWithouComment)) {
     return str;
   }
-
   var r = replaceTpStrByAst({ str: strWithouComment, strAst, ...params });
 
-  Array.from(commentConentMap.entries()).forEach(([k, v]) => {
-    r = r.replace(k, k => commentConentMap.get(k));
-  });
-  // r;
+  var mapArr = Array.from(commentConentMap.entries());
+  r = mapArr.reduce((a, [k, v]) => {
+    return a.replace(k, v);
+  }, r);
+
   return r;
 }
 
@@ -1685,7 +1916,6 @@ async function getReplaceStrOfTemplate({
     translateMark,
     isExtractChinese
   });
-  // console.log(value);
   return {
     source: tpStr,
     value
@@ -1773,10 +2003,10 @@ async function replaceStrOfScriptFun({
       translateMap,
       isExtractChinese
     });
-    Array.from(jsxMap.entries()).forEach(([k, v]) => {
-      strWithoutJsx = strWithoutJsx.replace(k, v);
-    });
-    replacedStr = strWithoutJsx;
+    var mapArr = Array.from(jsxMap.entries());
+    replacedStr = mapArr.reduce((a, [k, v]) => {
+      return a.replace(k, v);
+    }, strWithoutJsx);
   } else {
     if (!isExistChineseStr(str)) {
       return str;
@@ -1792,9 +2022,11 @@ async function replaceStrOfScriptFun({
 }
 
 function replaceJsxStrByAst({ str, ast, translateMap, isExtractChinese }) {
+  if (isExtractChinese && !isExistChineseStr(str)) {
+    return str;
+  }
   // log(ast);
   var type = ast.type;
-
   // #text #jsx
   // var TAG_NODE =
 
@@ -1808,19 +2040,102 @@ function replaceJsxStrByAst({ str, ast, translateMap, isExtractChinese }) {
   //     isExtractChinese: any
   //   })
   // );
+  var translateMark = "this.$t";
+  // str;
   switch (true) {
     case /^\w/.test(type):
-      log(ast);
+      // log(ast);
+      if (!isEmpty(ast.props)) {
+        str = Object.entries(ast.props).reduce((a, [k, v]) => {
+          // console.log(v);
+          if (lodash.isObject(v)) {
+            var val = v.nodeValue;
+            var equalVal = `${k}={${val}}`;
+          } else {
+            var val = v;
+            var equalVal = `${k}="${val}"`;
+          }
 
+          return replaceTpStrAttr({
+            str: a,
+            k,
+            v: val,
+            isJsx: true,
+            equalVal,
+            translateMap,
+            isExtractChinese,
+            translateMark
+          });
+        }, str);
+      }
+      if (!isEmpty(ast.children)) {
+        str = ast.children.reduce(
+          (a, child) =>
+            replaceJsxStrByAst({
+              str: a,
+              ast: child,
+              translateMap,
+              isExtractChinese
+            }),
+          str
+        );
+      }
       break;
     case /^#jsx/.test(type):
+      var text = ast.nodeValue.trim();
+      if (isExtractChinese && isExistChineseStr(text)) {
+        str = text
+          .split(/\r\n/g)
+          .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+          .map(s => s.trim())
+          .reduce((a, c) => {
+            if (translateMap.has(c)) {
+              return a.replace(
+                c,
+                `{${translateMark}(${translateMap.get(c).key})}`
+              );
+            } else {
+              return a;
+            }
+          }, str);
+      }
+      // str = str.replace(
+      //   ast.nodeValue,
+      //   getReplaceExpVal({
+      //     mark: "'",
+      //     varMark: '"',
+      //     val: ast.nodeValue,
+      //     translateMap,
+      //     translateMark,
+      //     isExtractChinese
+      //   })
+      // );
       break;
     case /^#text/.test(type):
+      var text = ast.nodeValue;
+      if (isExtractChinese && isExistChineseStr(text)) {
+        str = text
+          .trim()
+          .split(/\r\n/g)
+          .filter(f => getChineseStrBoolean({ str: f, isExtractChinese }))
+          .map(s => s.trim())
+          .reduce((a, c) => {
+            if (translateMap.has(c)) {
+              return a.replace(
+                c,
+                `{${translateMark}(${translateMap.get(c).key})}`
+              );
+            } else {
+              return a;
+            }
+          }, str);
+      }
       break;
 
     default:
       break;
   }
+  // str;
   return str;
 }
 
@@ -1841,12 +2156,13 @@ async function replaceStrOfJsxFun({
   // log(strAstArr);
   return strArr.map((str, index) => {
     if (isExtractChinese && isExistChineseStr(str)) {
-      return replaceJsxStrByAst({
+      var r = replaceJsxStrByAst({
         str,
         ast: strAstArr[index],
         translateMap,
         isExtractChinese
       });
+      return r;
     } else {
       return str;
     }
@@ -1943,7 +2259,8 @@ async function getReplaceStrOfScript({
     (a, c) => a.replace(c.source, c.value),
     pureScriptStr
   );
-  var replaceStr = Array.from(commentConentMap.entries()).reduce(
+  var mapArr = Array.from(commentConentMap.entries());
+  var replaceStr = mapArr.reduce(
     (a, [k, v]) => a.replace(k, v),
     strWithoutCommentI18n
   );
@@ -1993,6 +2310,7 @@ async function replaceFileStr({
     //     str = str.replace(rpObj.source, rpObj.value);
     //   }
     // });
+    // str;
   }
   if (type == ".js") {
     var rpObj = await getReplaceStrOfScript({
@@ -2038,6 +2356,13 @@ async function autoI18n({ file, json, outPut, isExtractChinese = true }) {
 
 autoI18n({
   file: { p: resolve(__dirname, "./test.vue") },
-  json: { p: resolve(__dirname, "../src/local/**/**.json") }
+  json: { p: resolve(__dirname, "../src/local/**/**.json") },
+  outPut:{
+    dir: resolve(__dirname, "./"),
+    fileNameList: ["i18n_common_zh.json", "i18n_common_en.json"]
+  }
   // isExtractChinese: true
 });
+
+// todo  确定 <template> <script> ，出现的先后顺寻 谁先出现，先提取谁，提取之前最好用eslint格式化
+// <template>。*</template> 以及 <script> .* </script>前面的空格必然是最少的。
